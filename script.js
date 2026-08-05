@@ -4,6 +4,9 @@
 let activityCount = 0;
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVPu-_GkUZaaMa5iWBjhSiXVNVkkihkqY9c7zpvQUdY5DogFgbhujd1edV9v9v4jWo/exec';
 
+/** Active voice recording session (only one at a time) */
+let activeVoiceSession = null;
+
 // Activity type options
 const activityTypes = [
     'In-person presentation',
@@ -41,6 +44,9 @@ function setupEventListeners() {
     
     // Form submission
     document.getElementById('salesForm').addEventListener('submit', handleSubmit);
+
+    // Voice note buttons (delegated — activity cards are dynamic)
+    document.getElementById('activitiesContainer').addEventListener('click', handleVoiceControlClick);
 }
 
 /**
@@ -165,7 +171,16 @@ function addActivityCard() {
             
             <!-- What happened -->
             <div class="mb-3">
-                <label for="happened-${activityCount}" class="form-label">What happened?</label>
+                <div class="textarea-field-header">
+                    <label for="happened-${activityCount}" class="form-label">What happened?</label>
+                    <div class="voice-note-controls" data-target="happened-${activityCount}">
+                        <button type="button" class="btn btn-voice-record" data-voice-action="toggle" aria-label="Record voice note for what happened">
+                            <span class="voice-btn-icon" aria-hidden="true">🎤</span>
+                            <span class="voice-btn-label">Voice note</span>
+                        </button>
+                        <span class="voice-status" role="status"></span>
+                    </div>
+                </div>
                 <textarea class="form-control" 
                           id="happened-${activityCount}" 
                           name="happened-${activityCount}" 
@@ -175,7 +190,16 @@ function addActivityCard() {
             
             <!-- Next move -->
             <div class="mb-3">
-                <label for="nextMove-${activityCount}" class="form-label">What is the next move?</label>
+                <div class="textarea-field-header">
+                    <label for="nextMove-${activityCount}" class="form-label">What is the next move?</label>
+                    <div class="voice-note-controls" data-target="nextMove-${activityCount}">
+                        <button type="button" class="btn btn-voice-record" data-voice-action="toggle" aria-label="Record voice note for next move">
+                            <span class="voice-btn-icon" aria-hidden="true">🎤</span>
+                            <span class="voice-btn-label">Voice note</span>
+                        </button>
+                        <span class="voice-status" role="status"></span>
+                    </div>
+                </div>
                 <textarea class="form-control" 
                           id="nextMove-${activityCount}" 
                           name="nextMove-${activityCount}" 
@@ -449,7 +473,7 @@ function collectFormData() {
  * @returns {Promise} - The fetch promise
  */
 async function submitToGoogleScript(data) {
-    const response = await fetch(GOOGLE_SCRIPT_URL, {
+    const response = await fetch(getGoogleScriptUrl(), {
         method: 'POST',
         mode: 'no-cors',
         headers: {
@@ -535,4 +559,384 @@ function showError(message) {
 function hideMessages() {
     document.getElementById('successMessage').style.display = 'none';
     document.getElementById('errorMessage').style.display = 'none';
+}
+
+/**
+ * Google Apps Script web app URL (form submit + transcription). Never put Groq API key in this file.
+ * @returns {string}
+ */
+function getGoogleScriptUrl() {
+    const meta = document.querySelector('meta[name="google-script-url"]');
+    const fromMeta = meta && meta.getAttribute('content');
+    if (fromMeta && fromMeta.trim()) {
+        return fromMeta.trim().replace(/\/$/, '');
+    }
+    return GOOGLE_SCRIPT_URL;
+}
+
+/**
+ * Same deployment as the form; doPost routes on action: "transcribe".
+ * @returns {string}
+ */
+function getTranscribeApiUrl() {
+    const meta = document.querySelector('meta[name="transcribe-api-url"]');
+    const fromMeta = meta && meta.getAttribute('content');
+    if (fromMeta && fromMeta.trim()) {
+        return fromMeta.trim().replace(/\/$/, '');
+    }
+    return getGoogleScriptUrl();
+}
+
+/**
+ * @returns {string|null}
+ */
+function getSupportedRecordingMimeType() {
+    if (typeof MediaRecorder === 'undefined') {
+        return null;
+    }
+    const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/ogg'
+    ];
+    for (const type of candidates) {
+        if (MediaRecorder.isTypeSupported(type)) {
+            return type;
+        }
+    }
+    return '';
+}
+
+/**
+ * @param {HTMLElement} controlsEl
+ * @param {string} message
+ * @param {'idle'|'busy'|'error'} state
+ */
+function setVoiceControlStatus(controlsEl, message, state) {
+    const statusEl = controlsEl.querySelector('.voice-status');
+    if (!statusEl) {
+        return;
+    }
+    statusEl.textContent = message || '';
+    statusEl.classList.remove('is-error', 'is-busy');
+    if (state === 'error') {
+        statusEl.classList.add('is-error');
+    } else if (state === 'busy') {
+        statusEl.classList.add('is-busy');
+    }
+}
+
+/**
+ * @param {HTMLElement} controlsEl
+ * @param {'idle'|'recording'|'transcribing'} uiState
+ */
+function setVoiceButtonState(controlsEl, uiState) {
+    const btn = controlsEl.querySelector('.btn-voice-record');
+    const label = controlsEl.querySelector('.voice-btn-label');
+    const icon = controlsEl.querySelector('.voice-btn-icon');
+    if (!btn || !label) {
+        return;
+    }
+    btn.classList.remove('is-recording');
+    if (uiState === 'recording') {
+        btn.classList.add('is-recording');
+        btn.disabled = false;
+        label.textContent = 'Stop';
+        if (icon) {
+            icon.textContent = '⏹';
+        }
+        btn.setAttribute('aria-label', 'Stop recording');
+        return;
+    }
+    if (uiState === 'transcribing') {
+        btn.disabled = true;
+        label.textContent = 'Transcribing…';
+        if (icon) {
+            icon.textContent = '';
+        }
+        return;
+    }
+    btn.disabled = false;
+    label.textContent = 'Voice note';
+    if (icon) {
+        icon.textContent = '🎤';
+    }
+    btn.setAttribute('aria-label', 'Record voice note');
+}
+
+/**
+ * @param {Blob} blob
+ * @returns {Promise<string>}
+ */
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result;
+            if (typeof result !== 'string') {
+                reject(new Error('Could not read recording'));
+                return;
+            }
+            const base64 = result.split(',')[1];
+            resolve(base64 || '');
+        };
+        reader.onerror = () => reject(new Error('Could not read recording'));
+        reader.readAsDataURL(blob);
+    });
+}
+
+/**
+ * @param {string} textareaId
+ * @param {string} text
+ */
+function applyTranscriptionToField(textareaId, text) {
+    const field = document.getElementById(textareaId);
+    if (!field || !text) {
+        return;
+    }
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return;
+    }
+    const existing = field.value.trim();
+    field.value = existing ? `${existing}\n\n${trimmed}` : trimmed;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/**
+ * @param {Blob} audioBlob
+ * @param {string} mimeType
+ * @returns {Promise<string>}
+ */
+async function transcribeAudioBlob(audioBlob, mimeType) {
+    const apiUrl = getTranscribeApiUrl();
+    const base64 = await blobToBase64(audioBlob);
+    const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+            action: 'transcribe',
+            audio: base64,
+            mimeType: mimeType.split(';')[0],
+            filename: `voice-note.${ext}`
+        })
+    });
+
+    let payload = {};
+    try {
+        payload = await response.json();
+    } catch {
+        payload = {};
+    }
+
+    if (!response.ok) {
+        throw new Error(payload.error || 'Transcription failed. Please try again.');
+    }
+
+    if (payload.error) {
+        throw new Error(payload.error);
+    }
+
+    return (payload.text || '').trim();
+}
+
+/**
+ * Stop any in-progress recording without transcribing
+ */
+function cancelActiveVoiceSession() {
+    if (!activeVoiceSession) {
+        return;
+    }
+    const { recorder, stream, controlsEl } = activeVoiceSession;
+    activeVoiceSession = null;
+    if (recorder && recorder.state !== 'inactive') {
+        recorder.onstop = null;
+        try {
+            recorder.stop();
+        } catch {
+            /* ignore */
+        }
+    }
+    if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+    }
+    setVoiceButtonState(controlsEl, 'idle');
+    setVoiceControlStatus(controlsEl, '', 'idle');
+}
+
+/**
+ * @param {HTMLElement} controlsEl
+ */
+async function startVoiceRecording(controlsEl) {
+    if (activeVoiceSession && activeVoiceSession.controlsEl !== controlsEl) {
+        cancelActiveVoiceSession();
+    }
+    if (activeVoiceSession) {
+        return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setVoiceControlStatus(
+            controlsEl,
+            'Voice notes are not supported in this browser.',
+            'error'
+        );
+        return;
+    }
+
+    const mimeType = getSupportedRecordingMimeType();
+    if (mimeType === null) {
+        setVoiceControlStatus(
+            controlsEl,
+            'Voice recording is not supported in this browser.',
+            'error'
+        );
+        return;
+    }
+
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+        const name = err && err.name;
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+            setVoiceControlStatus(
+                controlsEl,
+                'Microphone access was denied. Allow the mic in browser settings.',
+                'error'
+            );
+        } else if (name === 'NotFoundError') {
+            setVoiceControlStatus(controlsEl, 'No microphone was found on this device.', 'error');
+        } else {
+            setVoiceControlStatus(
+                controlsEl,
+                'Could not access the microphone. Please try again.',
+                'error'
+            );
+        }
+        return;
+    }
+
+    const chunks = [];
+    let recorder;
+    try {
+        recorder = mimeType
+            ? new MediaRecorder(stream, { mimeType })
+            : new MediaRecorder(stream);
+    } catch {
+        stream.getTracks().forEach((track) => track.stop());
+        setVoiceControlStatus(controlsEl, 'Could not start recording on this device.', 'error');
+        return;
+    }
+
+    const targetId = controlsEl.getAttribute('data-target');
+    const session = { recorder, stream, controlsEl, targetId, mimeType: recorder.mimeType || mimeType || 'audio/webm' };
+    activeVoiceSession = session;
+
+    recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+            chunks.push(event.data);
+        }
+    };
+
+    recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const current = activeVoiceSession;
+        activeVoiceSession = null;
+
+        if (!current || current.controlsEl !== controlsEl) {
+            return;
+        }
+
+        const blob = new Blob(chunks, { type: current.mimeType });
+        if (blob.size === 0) {
+            setVoiceButtonState(controlsEl, 'idle');
+            setVoiceControlStatus(controlsEl, 'Recording was empty. Try again.', 'error');
+            return;
+        }
+
+        const maxBytes = 3.5 * 1024 * 1024;
+        if (blob.size > maxBytes) {
+            setVoiceButtonState(controlsEl, 'idle');
+            setVoiceControlStatus(
+                controlsEl,
+                'Recording is too long. Keep voice notes to about 2 minutes or less.',
+                'error'
+            );
+            return;
+        }
+
+        setVoiceButtonState(controlsEl, 'transcribing');
+        setVoiceControlStatus(
+            controlsEl,
+            'Transcribing your voice note…',
+            'busy'
+        );
+
+        try {
+            const text = await transcribeAudioBlob(blob, current.mimeType);
+            if (!text) {
+                setVoiceControlStatus(
+                    controlsEl,
+                    'No speech detected. Try speaking closer to the mic.',
+                    'error'
+                );
+            } else {
+                applyTranscriptionToField(targetId, text);
+                setVoiceControlStatus(controlsEl, 'Added to the field above.', 'idle');
+            }
+        } catch (error) {
+            setVoiceControlStatus(
+                controlsEl,
+                error.message || 'Transcription failed.',
+                'error'
+            );
+        } finally {
+            setVoiceButtonState(controlsEl, 'idle');
+        }
+    };
+
+    recorder.start();
+    setVoiceButtonState(controlsEl, 'recording');
+    setVoiceControlStatus(controlsEl, 'Recording… tap Stop when finished.', 'busy');
+}
+
+/**
+ * @param {HTMLElement} controlsEl
+ */
+function stopVoiceRecording(controlsEl) {
+    if (!activeVoiceSession || activeVoiceSession.controlsEl !== controlsEl) {
+        return;
+    }
+    const { recorder } = activeVoiceSession;
+    if (recorder && recorder.state === 'recording') {
+        recorder.stop();
+    }
+}
+
+/**
+ * @param {Event} event
+ */
+function handleVoiceControlClick(event) {
+    const btn = event.target.closest('[data-voice-action="toggle"]');
+    if (!btn) {
+        return;
+    }
+    event.preventDefault();
+    const controlsEl = btn.closest('.voice-note-controls');
+    if (!controlsEl) {
+        return;
+    }
+
+    if (activeVoiceSession && activeVoiceSession.controlsEl === controlsEl) {
+        stopVoiceRecording(controlsEl);
+        return;
+    }
+
+    startVoiceRecording(controlsEl);
 }
