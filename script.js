@@ -289,6 +289,44 @@ async function handleSubmit(event) {
 }
 
 /**
+ * Check if the input looks like a role/title instead of a person's name
+ * @param {string} input - The input to check
+ * @returns {boolean} - True if it looks like a role, false otherwise
+ */
+function isRoleTitle(input) {
+    const rolePatterns = [
+        /\bhr\b/i,
+        /\bmanager\b/i,
+        /\bdirector\b/i,
+        /\bceo\b/i,
+        /\bsupervisor\b/i,
+        /\badmin\b/i,
+        /\breceptionist\b/i,
+        /\bsecretary\b/i,
+        /\bassistant\b/i,
+        /\bcoordinator\b/i,
+        /\bofficer\b/i,
+        /\bhead\b/i,
+        /\blead\b/i,
+        /\bchief\b/i,
+        /\bexecutive\b/i,
+        /\bvp\b/i,
+        /\bpresident\b/i,
+        /\bowner\b/i,
+        /\bpartner\b/i,
+        /\bclerk\b/i,
+        /\bagent\b/i,
+        /\brepresentative\b/i,
+        /\bconsultant\b/i,
+        /\bspecialist\b/i,
+        /\bmanager\b/i,
+        /\badmin\b/i
+    ];
+    
+    return rolePatterns.some(pattern => pattern.test(input));
+}
+
+/**
  * Validate the form
  * @returns {boolean} - True if valid, false otherwise
  */
@@ -343,6 +381,12 @@ function validateForm() {
         
         if (!contactName) {
             showError(`Please enter the contact person's name for Activity ${i}.`);
+            return false;
+        }
+        
+        // Check if contact name looks like a role/title instead of a person's name
+        if (isRoleTitle(contactName)) {
+            showError(`Please enter the contact person's actual name (not their role/title) for Activity ${i}. For example: "John Smith" instead of "Manager".`);
             return false;
         }
     }
