@@ -726,10 +726,12 @@ async function transcribeAudioBlob(audioBlob, mimeType) {
             filename: `voice-note.${ext}`
         })
     });
+    console.log('🎙️ Transcription response status:', response.status);
 
     let payload = {};
     try {
         payload = await response.json();
+        console.log('🎙️ Transcription response payload:', payload);
     } catch {
         payload = {};
     }
@@ -790,6 +792,7 @@ async function startVoiceRecording(controlsEl) {
     }
 
     const mimeType = getSupportedRecordingMimeType();
+    console.log('🎙️ Browser selected recording MIME type:', mimeType);
     if (mimeType === null) {
         setVoiceControlStatus(
             controlsEl,
@@ -854,6 +857,13 @@ async function startVoiceRecording(controlsEl) {
         }
 
         const blob = new Blob(chunks, { type: current.mimeType });
+        console.log('🎙️ Recorded audio:', {
+            mimeType: current.mimeType,
+            size: blob.size,
+            sizeKB: Math.round(blob.size / 1024),
+            sizeMB: (blob.size / (1024 * 1024)).toFixed(2)
+        });
+        
         if (blob.size === 0) {
             setVoiceButtonState(controlsEl, 'idle');
             setVoiceControlStatus(controlsEl, 'Recording was empty. Try again.', 'error');
