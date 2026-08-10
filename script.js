@@ -21,7 +21,7 @@ const activityTypes = [
 ];
 
 // Initialize the application when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initializeForm();
     addActivityCard();
     setupEventListeners();
@@ -41,7 +41,7 @@ function initializeForm() {
 function setupEventListeners() {
     // Add activity button
     document.getElementById('addActivityBtn').addEventListener('click', addActivityCard);
-    
+
     // Form submission
     document.getElementById('salesForm').addEventListener('submit', handleSubmit);
 
@@ -55,11 +55,11 @@ function setupEventListeners() {
 function addActivityCard() {
     activityCount++;
     const container = document.getElementById('activitiesContainer');
-    
+
     const activityCard = document.createElement('div');
     activityCard.className = 'activity-card';
     activityCard.id = `activity-${activityCount}`;
-    
+
     activityCard.innerHTML = `
         <div class="activity-card-body">
             <h3 class="activity-number">Activity ${activityCount}</h3>
@@ -146,7 +146,7 @@ function addActivityCard() {
                        class="form-control" 
                        id="contactName-${activityCount}" 
                        name="contactName-${activityCount}" 
-                       required>
+                       placeholder="Person's name">
             </div>
             
             <!-- Contact person's position -->
@@ -156,7 +156,7 @@ function addActivityCard() {
                        class="form-control" 
                        id="contactPosition-${activityCount}" 
                        name="contactPosition-${activityCount}"
-                       placeholder="Enter person's position">
+                       placeholder="Person's position">
             </div>
             
             <!-- Contact person's phone number -->
@@ -217,10 +217,10 @@ function addActivityCard() {
             </div>
         </div>
     `;
-    
+
     container.appendChild(activityCard);
     updateRemoveButtons();
-    
+
     // Scroll to the new activity card
     activityCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -245,7 +245,7 @@ function handleActivityTypeChange(activityNumber) {
     const typeSelect = document.getElementById(`type-${activityNumber}`);
     const customTypeContainer = document.getElementById(`customTypeContainer-${activityNumber}`);
     const customTypeInput = document.getElementById(`customType-${activityNumber}`);
-    
+
     if (typeSelect.value === 'Other (type here)') {
         customTypeContainer.style.display = 'block';
         customTypeInput.required = true;
@@ -275,38 +275,38 @@ function updateRemoveButtons() {
  */
 async function handleSubmit(event) {
     event.preventDefault();
-    
+
     // Hide previous messages
     hideMessages();
-    
+
     // Validate form
     if (!validateForm()) {
         return;
     }
-    
+
     // Collect form data
     const formData = collectFormData();
-    
+
     // Show loading indicator
     showLoading();
-    
+
     try {
         // Submit data to Google Apps Script
         const response = await submitToGoogleScript(formData);
-        
+
         // Hide loading indicator
         hideLoading();
-        
+
         // Show success message
         showSuccess();
-        
+
         // Reset form
         resetForm();
-        
+
     } catch (error) {
         // Hide loading indicator
         hideLoading();
-        
+
         // Show error message
         showError(error.message);
     }
@@ -346,7 +346,7 @@ function isRoleTitle(input) {
         /\bmanager\b/i,
         /\badmin\b/i
     ];
-    
+
     return rolePatterns.some(pattern => pattern.test(input));
 }
 
@@ -357,43 +357,43 @@ function isRoleTitle(input) {
 function validateForm() {
     const employeeName = document.getElementById('employeeName').value.trim();
     const reportDate = document.getElementById('reportDate').value;
-    
+
     if (!employeeName) {
         showError('Please enter your employee name.');
         return false;
     }
-    
+
     if (!reportDate) {
         showError('Please select a date.');
         return false;
     }
-    
+
     // Check if there are any activities
     const activities = document.querySelectorAll('.activity-card');
     if (activities.length === 0) {
         showError('Please add at least one activity.');
         return false;
     }
-    
+
     // Validate each activity
     for (let i = 1; i <= activityCount; i++) {
         const activityCard = document.getElementById(`activity-${i}`);
         if (!activityCard) continue;
-        
+
         const place = document.getElementById(`place-${i}`).value.trim();
         const type = document.getElementById(`type-${i}`).value;
         const contactName = document.getElementById(`contactName-${i}`).value.trim();
-        
+
         if (!place) {
             showError(`Please enter the place name for Activity ${i}.`);
             return false;
         }
-        
+
         if (!type) {
             showError(`Please select an activity type for Activity ${i}.`);
             return false;
         }
-        
+
         // If Other is selected, validate custom input
         if (type === 'Other (type here)') {
             const customType = document.getElementById(`customType-${i}`).value.trim();
@@ -402,19 +402,19 @@ function validateForm() {
                 return false;
             }
         }
-        
+
         if (!contactName) {
             showError(`Please enter the contact person's name for Activity ${i}.`);
             return false;
         }
-        
+
         // Check if contact name looks like a role/title instead of a person's name
         if (isRoleTitle(contactName)) {
             showError(`Please enter the contact person's actual name (not their role/title) for Activity ${i}. For example: "John Smith" instead of "Manager".`);
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -425,24 +425,24 @@ function validateForm() {
 function collectFormData() {
     const employeeName = document.getElementById('employeeName').value.trim();
     const reportDate = document.getElementById('reportDate').value;
-    
+
     const activities = [];
-    
+
     for (let i = 1; i <= activityCount; i++) {
         const activityCard = document.getElementById(`activity-${i}`);
         if (!activityCard) continue;
-        
+
         // Get selected location
         const locationInput = document.querySelector(`input[name="location-${i}"]:checked`);
         const location = locationInput ? locationInput.value : '';
-        
+
         // Get activity type (use custom value if Other is selected)
         const typeSelect = document.getElementById(`type-${i}`);
         let activityType = typeSelect.value;
         if (activityType === 'Other (type here)') {
             activityType = document.getElementById(`customType-${i}`).value.trim();
         }
-        
+
         const activity = {
             number: i,
             location: location,
@@ -456,10 +456,10 @@ function collectFormData() {
             happened: document.getElementById(`happened-${i}`).value.trim(),
             next_move: document.getElementById(`nextMove-${i}`).value.trim()
         };
-        
+
         activities.push(activity);
     }
-    
+
     return {
         name: employeeName,
         date: reportDate,
@@ -481,7 +481,7 @@ async function submitToGoogleScript(data) {
         },
         body: JSON.stringify(data)
     });
-    
+
     // Since no-cors mode doesn't give us access to response details,
     // we'll assume success if no network error occurred
     return response;
@@ -494,14 +494,14 @@ function resetForm() {
     // Reset employee info
     document.getElementById('employeeName').value = '';
     initializeForm();
-    
+
     // Remove all activity cards
     const container = document.getElementById('activitiesContainer');
     container.innerHTML = '';
-    
+
     // Reset activity count
     activityCount = 0;
-    
+
     // Add one empty activity card
     addActivityCard();
 }
@@ -530,7 +530,7 @@ function hideLoading() {
 function showSuccess() {
     const successMessage = document.getElementById('successMessage');
     successMessage.style.display = 'block';
-    
+
     // Auto-hide after 5 seconds
     setTimeout(() => {
         successMessage.style.display = 'none';
@@ -546,7 +546,7 @@ function showError(message) {
     const errorText = document.getElementById('errorText');
     errorText.textContent = message;
     errorMessage.style.display = 'block';
-    
+
     // Auto-hide after 5 seconds
     setTimeout(() => {
         errorMessage.style.display = 'none';
@@ -731,7 +731,6 @@ async function transcribeAudioBlob(audioBlob, mimeType) {
     let payload = {};
     try {
         payload = await response.json();
-        console.log('🎙️ Transcription response payload:', payload);
     } catch {
         payload = {};
     }
@@ -857,13 +856,7 @@ async function startVoiceRecording(controlsEl) {
         }
 
         const blob = new Blob(chunks, { type: current.mimeType });
-        console.log('🎙️ Recorded audio:', {
-            mimeType: current.mimeType,
-            size: blob.size,
-            sizeKB: Math.round(blob.size / 1024),
-            sizeMB: (blob.size / (1024 * 1024)).toFixed(2)
-        });
-        
+
         if (blob.size === 0) {
             setVoiceButtonState(controlsEl, 'idle');
             setVoiceControlStatus(controlsEl, 'Recording was empty. Try again.', 'error');
